@@ -48,9 +48,9 @@ describe RecentActivity do
       before do
         space1.add_member!(user, 'User')
         space2.add_member!(user, 'Admin')
-        @activity1 = RecentActivity.create(key: default_key, trackable: space1)
-        @activity2 = RecentActivity.create(key: default_key, trackable: space2)
-        @activity3 = RecentActivity.create(key: default_key, trackable: space3)
+        @activity1 = RecentActivity.create(key: default_key, owner: space1)
+        @activity2 = RecentActivity.create(key: default_key, owner: space2)
+        @activity3 = RecentActivity.create(key: default_key, owner: space3)
       end
       subject { RecentActivity.user_activity(user) }
       it { subject.length.should be(2) }
@@ -83,7 +83,7 @@ describe RecentActivity do
         @activity2 = RecentActivity.create(owner: space, key: "key2")
         @activity3 = RecentActivity.create(owner: space, key: "key3")
       end
-      subject { RecentActivity.user_activity(user, ["key1", "key2"]) }
+      subject { RecentActivity.user_activity(user, reject_keys: ["key1", "key2"]) }
       it { subject.length.should be(1) }
       it { subject[0].should eq(@activity3) }
     end
@@ -103,15 +103,17 @@ describe RecentActivity do
   describe "#user_public_activity" do
     let(:user) { FactoryGirl.create(:user) }
 
-    context 'test it returns only activities performed by the user' do
+    context 'test it returns only activities performed by the user in public spaces' do
       let(:user2) { FactoryGirl.create(:user) }
 
       before {
-        space = FactoryGirl.create(:space)
+        space = FactoryGirl.create(:space, public: true)
+        space2 = FactoryGirl.create(:space)
         posts = [ FactoryGirl.create(:post, space: space), FactoryGirl.create(:post, space: space) ]
         # pending: webconf activities
 
         space.add_member!(user)
+        space2.add_member!(user)
         space.add_member!(user2)
 
         @activities = [
@@ -119,24 +121,31 @@ describe RecentActivity do
           space.new_activity(:join, user),
           posts[0].new_activity(:create, user),
           space.new_activity(:update, user2),
-          posts[1].new_activity(:create, user2)
+          posts[1].new_activity(:create, user2),
+          space2.new_activity(:update, user)
         ]
         # hack, we do this because we need it to use our class RecentActivity and not PublicActivity
         @activities.map!{|a| RecentActivity.find(a.id)}
       }
 
+      # belonging to him and in public spaces
       it { RecentActivity.user_public_activity(user).size.should be(3) }
       it { RecentActivity.user_public_activity(user2).size.should be(2) }
       it { RecentActivity.user_public_activity(user).should include(*@activities[0..2]) }
       it { RecentActivity.user_public_activity(user2).should include(*@activities[3..4]) }
       it { RecentActivity.user_public_activity(user).size.should be(3) }
+
+      # activities in private spaces shouldn't show up
+      it { RecentActivity.user_public_activity(user).should_not include(@activities[5]) }
+      it { RecentActivity.user_activity(user).size.should be(6) }
+      it { RecentActivity.user_activity(user).should include(*@activities[0..5]) }
     end
 
     context "ignores declined join requests" do
       before {
         RecentActivity.should_receive(:user_activity) { |user, arg|
-          arg.should be_an_instance_of(Array)
-          arg.should include("space.decline")
+          arg.should be_an_instance_of(Hash)
+          arg.should include(public_spaces: true, reject_keys: ['space.decline'])
         }.and_return(RecentActivity.none)
       }
       it { RecentActivity.user_public_activity(user).should be_blank }

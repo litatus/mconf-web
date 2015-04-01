@@ -135,36 +135,58 @@ class RecentActivity < PublicActivity::Activity
   # Used for home page and user page pagination
   self.per_page = 10
 
-  # Returns a relation with all the activity related to a user: activities in his spaces
-  # and web conference rooms.
-  # * +user+ - the user which activities will be returned
-  # * +reject_keys+ - an array of keys to reject when querying. Keys are the strings that identify
-  #   the recent activity, e.g. "space.leave".
-  def self.user_activity(user, reject_keys=[])
-    user_room = user.bigbluebutton_room
-    spaces = user.spaces
+  def self.spaces_activity(spaces)
     space_rooms = spaces.map{ |s| s.bigbluebutton_room.id }
-
-    # some types of activities we ignore by default
-    reject_keys += ["user.created", "shibboleth.user.created", "ldap.user.created", "user.approved"]
 
     t = RecentActivity.arel_table
     in_spaces = t[:owner_id].in(spaces.pluck(:id)).and(t[:owner_type].eq('Space'))
     in_spaces_as_trackable = t[:trackable_id].in(spaces.pluck(:id)).and(t[:trackable_type].eq('Space'))
-    in_room = t[:owner_id].in(user_room.id).and(t[:owner_type].eq('BigbluebuttonRoom'))
     in_space_rooms = t[:owner_id].in(space_rooms).and(t[:owner_type].eq('BigbluebuttonRoom'))
 
-    activities = RecentActivity.where(in_spaces.or(in_spaces_as_trackable).or(in_room).or(in_space_rooms))
-    for key in reject_keys
+    RecentActivity.where(in_spaces.or(in_spaces_as_trackable).or(in_space_rooms))
+  end
+
+  def self.without_keys keys
+    activities = self
+    for key in keys
       activities = activities.where("activities.key != ?", key)
     end
     activities
   end
 
-  # All activities that are public and should be visible for a user
+  # Returns a relation with all the activity related to a user: activities in his spaces
+  # and web conference rooms.
   # * +user+ - the user which activities will be returned
+  # * +options+ - a hash of options to customize the query output
+  #   * :reject_keys - an array of keys to reject when querying. Keys are the strings that identify
+  #     the recent activity, e.g. "space.leave".
+  #   * :only_public - only return activities in public spaces
+  def self.user_activity(user, options = {})
+    if options[:public_spaces]
+      spaces = user.spaces.public_spaces
+    else
+      spaces = user.spaces
+    end
+
+    # Ridiculous amounts of wankery to get a conjunction of 2 queries
+    # (activities in user's spaces + activities in user's room)
+    space_activities = self.spaces_activity(spaces)
+    room_activities = RecentActivity.where(owner_id: user.bigbluebutton_room.id, owner_type: 'BigbluebuttonRoom')
+
+    space_activities = space_activities.where_values.reduce(:and)
+    room_activities = room_activities.where_values.reduce(:and)
+
+    # this is the conjunction
+    activities = RecentActivity.where(space_activities.or(room_activities))
+
+    # some types of activities we ignore by default
+    options[:reject_keys] ||= []
+    options[:reject_keys] += ["user.created", "shibboleth.user.created", "ldap.user.created", "user.approved"]
+    activities.without_keys(options[:reject_keys])
+  end
+
+  # All activities that are public and should be visible for a user
   def self.user_public_activity user
-    # Filter activities done by user_id
-    activities = user_activity(user, ["space.decline"]).where(recipient_id: user.id)
+    self.user_activity(user, public_spaces: true, reject_keys: ["space.decline"]).where(recipient_id: user.id)
   end
 end
