@@ -1,23 +1,18 @@
 source 'https://rubygems.org'
 
 gem 'rails', '~> 4.1.4'
+gem 'sass-rails', '~> 4.0.3'
+gem 'coffee-rails', '~> 4.0.0'
+gem 'uglifier', '>= 1.0.3'
+gem 'jquery-rails', '~> 3.1.1'
+gem 'yui-compressor'
+gem 'compass-rails', '~> 1.0'
+gem 'handlebars_assets'
+gem 'select2-rails'
 
-# Gems used only for assets and not required
-# in production environments by default.
-group :assets do
-  gem 'sass-rails', '~> 4.0.3'
-  gem 'coffee-rails', '~> 4.0.0'
-  gem 'uglifier', '>= 1.0.3'
-  gem 'jquery-rails', '~> 3.1.1'
-  gem 'yui-compressor'
-  gem 'compass-rails', '~> 1.0'
-  gem 'handlebars_assets'
-
-  # TODO: remove when compass-rails is updated
-  # This compass is here so we can have css3/animation
-  gem 'compass', '~> 0.13.alpha'
-  gem 'select2-rails'
-end
+# TODO: remove when compass-rails is updated to support animations
+# This compass is here so we can have css3/animation
+gem 'compass', '~> 0.13.alpha'
 
 # TODO: temporary until we update to ruby 2.2.0, see http://dev.mconf.org/redmine/issues/1333
 gem 'psych', :git => 'https://github.com/lfzawacki/psych.git', :branch => 'gemfile-style'
